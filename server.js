@@ -2,7 +2,6 @@ require("dotenv").config();
 const express = require("express");
 const multer = require("multer");
 const fs = require("fs");
-const path = require("path");
 const FormData = require("form-data");
 const fetch = require("node-fetch");
 
@@ -23,18 +22,21 @@ async function pollForResult(requestId, maxAttempts = 120) {
       headers: { Authorization: `Bearer ${API_KEY}` },
     });
     const data = await res.json();
-    const status = data.data?.status;
+    const inner = data.data || data;
+    const status = inner.status;
 
-    if (status === "completed" && data.data?.outputs?.[0]) {
-      return { success: true, url: data.data.outputs[0] };
+    console.log(`[Poll ${i + 1}] Status: ${status}`);
+
+    if (status === "completed" && inner.outputs?.[0]) {
+      return { success: true, url: inner.outputs[0] };
     } else if (status === "failed") {
-      return { success: false, error: data.data?.error || "Generation failed" };
+      return { success: false, error: inner.error || "Generation failed" };
     }
   }
-  return { success: false, error: "Timeout" };
+  return { success: false, error: "Timeout after " + maxAttempts + " attempts" };
 }
 
-// Upload image to WaveSpeed
+// Upload image to WaveSpeed Media API
 app.post("/api/upload", upload.single("image"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
@@ -47,7 +49,7 @@ app.post("/api/upload", upload.single("image"), async (req, res) => {
       contentType: req.file.mimetype,
     });
 
-    console.log("[Upload] Uploading to WaveSpeed...");
+    console.log("[Upload] Uploading to WaveSpeed Media API...");
     const response = await fetch(`${BASE_URL}/media/upload/binary`, {
       method: "POST",
       headers: {
@@ -73,24 +75,31 @@ app.post("/api/upload", upload.single("image"), async (req, res) => {
   }
 });
 
-// Generate: Soul + Face Swap pipeline
+// Generate: Soul Image-to-Image + Face Swap pipeline
 app.post("/api/generate", async (req, res) => {
   const { image_url, prompt, style, size } = req.body;
 
   try {
-    // ============ STEP 1: Soul - Generate stylized image ============
-    console.log("\n[Step 1] Soul generation...");
+    // ============ STEP 1: Higgsfield Soul Image-to-Image ============
+    // Endpoint: POST /higgsfield/soul/image-to-image
+    // Required: image (string), prompt (string)
+    // Optional: size, style, strength, quality, seed
+
+    console.log("\n========== STEP 1: SOUL ==========");
     const soulPayload = {
-      image: image_url,
-      prompt: prompt || "Professional portrait photo",
-      size: size || "1024*1024",
-      strength: 0.8,
-      quality: "medium",
+      image: image_url,                    // Required: input image URL
+      prompt: prompt || "Professional portrait photo, high quality",  // Required
+      size: size || "1024*1024",           // Optional: width*height
+      strength: 0.7,                        // Optional: 0.0-1.0, lower = closer to source
+      quality: "medium",                    // Optional: "medium" or "high"
     };
+
+    // Only add style if not "None"
     if (style && style !== "None") {
       soulPayload.style = style;
     }
-    console.log("[Soul] Payload:", JSON.stringify(soulPayload, null, 2));
+
+    console.log("[Soul] Request:", JSON.stringify(soulPayload, null, 2));
 
     const soulRes = await fetch(`${BASE_URL}/higgsfield/soul/image-to-image`, {
       method: "POST",
@@ -104,27 +113,40 @@ app.post("/api/generate", async (req, res) => {
     const soulData = await soulRes.json();
     console.log("[Soul] Response:", JSON.stringify(soulData, null, 2));
 
-    if (!soulRes.ok || !soulData.data?.id) {
-      return res.status(400).json({ error: soulData.message || "Soul failed" });
+    if (!soulRes.ok) {
+      return res.status(soulRes.status).json({
+        error: `Soul API error: ${soulData.message || JSON.stringify(soulData)}`
+      });
+    }
+
+    const soulRequestId = soulData.data?.id;
+    if (!soulRequestId) {
+      return res.status(400).json({ error: "No Soul request ID returned" });
     }
 
     // Poll for Soul result
-    console.log("[Soul] Polling...");
-    const soulResult = await pollForResult(soulData.data.id);
-    if (!soulResult.success) {
-      return res.status(400).json({ error: "Soul: " + soulResult.error });
-    }
-    console.log("[Soul] Generated:", soulResult.url);
+    console.log("[Soul] Polling for result...");
+    const soulResult = await pollForResult(soulRequestId, 80);
 
-    // ============ STEP 2: Face Swap - Apply user's face ============
-    console.log("\n[Step 2] Face Swap...");
+    if (!soulResult.success) {
+      return res.status(400).json({ error: `Soul failed: ${soulResult.error}` });
+    }
+    console.log("[Soul] Generated image:", soulResult.url);
+
+    // ============ STEP 2: WaveSpeed Face Swap ============
+    // Endpoint: POST /wavespeed-ai/image-face-swap
+    // Required: image (target), face_image (source face)
+    // Optional: target_index, output_format, enable_base64_output, enable_sync_mode
+
+    console.log("\n========== STEP 2: FACE SWAP ==========");
     const swapPayload = {
-      image: soulResult.url,  // Target: Soul-generated image
-      face_image: image_url,   // Source: User's face
-      target_index: 0,
-      output_format: "png",
+      image: soulResult.url,      // Required: target image (Soul output)
+      face_image: image_url,       // Required: source face (user's photo)
+      target_index: 0,             // Optional: 0 = largest face
+      output_format: "png",        // Optional: jpeg, png, webp
     };
-    console.log("[FaceSwap] Payload:", JSON.stringify(swapPayload, null, 2));
+
+    console.log("[FaceSwap] Request:", JSON.stringify(swapPayload, null, 2));
 
     const swapRes = await fetch(`${BASE_URL}/wavespeed-ai/image-face-swap`, {
       method: "POST",
@@ -138,19 +160,22 @@ app.post("/api/generate", async (req, res) => {
     const swapData = await swapRes.json();
     console.log("[FaceSwap] Response:", JSON.stringify(swapData, null, 2));
 
-    if (!swapRes.ok || !swapData.data?.id) {
-      return res.status(400).json({ error: swapData.message || "Face Swap failed" });
+    if (!swapRes.ok) {
+      return res.status(swapRes.status).json({
+        error: `FaceSwap API error: ${swapData.message || JSON.stringify(swapData)}`
+      });
     }
 
-    // Return Face Swap request ID for polling
-    res.json(swapData.data);
+    // Return Face Swap request ID for frontend polling
+    res.json(swapData.data || swapData);
+
   } catch (err) {
     console.error("[Generate] Error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Poll for result
+// Poll endpoint for frontend
 app.get("/api/result/:requestId", async (req, res) => {
   try {
     const response = await fetch(
@@ -165,5 +190,10 @@ app.get("/api/result/:requestId", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`\n  Soul + FaceSwap Generator: http://localhost:${PORT}\n`);
+  console.log(`
+  ╔════════════════════════════════════════╗
+  ║   Soul + FaceSwap Generator            ║
+  ║   http://localhost:${PORT}                 ║
+  ╚════════════════════════════════════════╝
+  `);
 });
