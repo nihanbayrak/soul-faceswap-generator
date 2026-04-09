@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Soul + FaceSwap Generator</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0a0b;
+      --surface: #141416;
+      --surface-2: #1c1c1f;
+      --border: #2a2a2e;
+      --text: #e8e8ec;
+      --text-dim: #8a8a96;
+      --accent: #c4a265;
+      --accent-dim: #a38545;
+      --danger: #e5534b;
+      --radius: 12px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .app {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 2.4rem;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, var(--accent) 0%, #e8d5b0 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    header p {
+      color: var(--text-dim);
+      margin-top: 8px;
+      font-size: 0.95rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 700px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+    }
+
+    .panel h2 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-bottom: 20px;
+    }
+
+    /* Upload zone */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .upload-zone:hover { border-color: var(--accent-dim); background: var(--surface-2); }
+    .upload-zone.has-image { padding: 0; border-style: solid; }
+
+    .upload-zone img {
+      width: 100%;
+      max-height: 320px;
+      object-fit: cover;
+      border-radius: 10px;
+      display: block;
+    }
+
+    .upload-zone .placeholder {
+      color: var(--text-dim);
+      font-size: 0.9rem;
+    }
+
+    .upload-zone .placeholder svg {
+      display: block;
+      margin: 0 auto 12px;
+      opacity: 0.4;
+    }
+
+    input[type="file"] { display: none; }
+
+    /* Form */
+    label {
+      display: block;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+      margin-top: 16px;
+    }
+
+    label:first-of-type { margin-top: 0; }
+
+    textarea, select {
+      width: 100%;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.9rem;
+      padding: 10px 12px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    textarea:focus, select:focus { border-color: var(--accent-dim); }
+    textarea { resize: vertical; min-height: 80px; }
+
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    /* Button */
+    .btn {
+      width: 100%;
+      margin-top: 24px;
+      padding: 14px;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%);
+      color: #0a0a0b;
+      font-family: inherit;
+      font-weight: 700;
+      font-size: 0.95rem;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+
+    .btn:hover { opacity: 0.9; }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Result */
+    .result-area {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 320px;
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .result-area img {
+      width: 100%;
+      border-radius: var(--radius);
+      display: block;
+    }
+
+    .result-placeholder {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      text-align: center;
+      padding: 20px;
+    }
+
+    /* Status */
+    .status {
+      margin-top: 16px;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      text-align: center;
+      min-height: 20px;
+    }
+
+    .status.error { color: var(--danger); }
+
+    /* Spinner */
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .download-link {
+      display: inline-block;
+      margin-top: 12px;
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.85rem;
+      text-align: center;
+      width: 100%;
+    }
+
+    .download-link:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Soul + FaceSwap</h1>
+      <p>Soul creates the style, FaceSwap puts your face in it</p>
+    </header>
+
+    <div class="grid">
+      <!-- Left: Input -->
+      <div class="panel">
+        <h2>Your Face</h2>
+
+        <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+          <div class="placeholder" id="uploadPlaceholder">
+            <svg width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 16V4m0 0l-4 4m4-4 4 4M4 20h16" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Upload your face photo
+          </div>
+        </div>
+        <input type="file" id="fileInput" accept="image/*" />
+
+        <label for="prompt">Prompt</label>
+        <textarea id="prompt" placeholder="e.g. Fashion editorial, golden hour lighting, wearing a tailored navy blazer"></textarea>
+
+        <div class="row">
+          <div>
+            <label for="style">Style</label>
+            <select id="style">
+              <option value="None">None</option>
+              <option value="Spotlight">Spotlight</option>
+              <option value="90's Editorial">90's Editorial</option>
+              <option value="Sunset Beach">Sunset Beach</option>
+              <option value="Fairycore">Fairycore</option>
+              <option value="Creatures">Creatures</option>
+              <option value="Gallery">Gallery</option>
+              <option value="Street View">Street View</option>
+            </select>
+          </div>
+          <div>
+            <label for="size">Size</label>
+            <select id="size">
+              <option value="1024*1024">1024×1024</option>
+              <option value="1152*2048">1152×2048</option>
+              <option value="2048*1152">2048×1152</option>
+            </select>
+          </div>
+        </div>
+
+        <button class="btn" id="generateBtn" disabled onclick="generate()">Upload face first</button>
+      </div>
+
+      <!-- Right: Output -->
+      <div class="panel">
+        <h2>Result</h2>
+        <div class="result-area" id="resultArea">
+          <div class="result-placeholder">Your generated image will appear here</div>
+        </div>
+        <div class="status" id="status"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let uploadedImageUrl = null;
+    let pollTimer = null;
+
+    const fileInput = document.getElementById("fileInput");
+    const uploadZone = document.getElementById("uploadZone");
+    const placeholder = document.getElementById("uploadPlaceholder");
+    const btn = document.getElementById("generateBtn");
+    const resultArea = document.getElementById("resultArea");
+    const status = document.getElementById("status");
+
+    // Handle file upload
+    fileInput.addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      // Show preview
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        uploadZone.classList.add("has-image");
+        uploadZone.innerHTML = `<img src="${ev.target.result}" alt="Uploaded" />`;
+      };
+      reader.readAsDataURL(file);
+
+      // Upload to server
+      setStatus("Uploading image...");
+      const form = new FormData();
+      form.append("image", file);
+
+      try {
+        const res = await fetch("/api/upload", { method: "POST", body: form });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        uploadedImageUrl = data.image_url;
+        btn.disabled = false;
+        btn.textContent = "Generate Image";
+        setStatus("Face uploaded. Describe a scene and generate!");
+      } catch (err) {
+        setStatus("Upload failed: " + err.message, true);
+      }
+    });
+
+    // Drag and drop
+    uploadZone.addEventListener("dragover", (e) => { e.preventDefault(); uploadZone.style.borderColor = "var(--accent)"; });
+    uploadZone.addEventListener("dragleave", () => { uploadZone.style.borderColor = ""; });
+    uploadZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      uploadZone.style.borderColor = "";
+      if (e.dataTransfer.files.length) {
+        fileInput.files = e.dataTransfer.files;
+        fileInput.dispatchEvent(new Event("change"));
+      }
+    });
+
+    // Generate
+    async function generate() {
+      if (!uploadedImageUrl) return;
+
+      btn.disabled = true;
+      btn.textContent = "Generating...";
+      resultArea.innerHTML = `<div><div class="spinner"></div><p style="color:var(--text-dim);font-size:0.85rem;margin-top:16px;">Soul → FaceSwap pipeline...</p></div>`;
+      setStatus("");
+
+      const body = {
+        image_url: uploadedImageUrl,
+        prompt: document.getElementById("prompt").value,
+        style: document.getElementById("style").value,
+        size: document.getElementById("size").value,
+      };
+
+      try {
+        const res = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+          throw new Error(JSON.stringify(data.error));
+        }
+
+        const requestId = data.id || data.request_id;
+        if (!requestId) throw new Error("No request ID returned: " + JSON.stringify(data));
+
+        setStatus("Task submitted. Polling for result...");
+        pollResult(requestId);
+      } catch (err) {
+        setStatus("Generation failed: " + err.message, true);
+        resetBtn();
+      }
+    }
+
+    // Poll
+    function pollResult(requestId) {
+      let attempts = 0;
+      const maxAttempts = 120; // 2 minutes at 1s intervals
+
+      pollTimer = setInterval(async () => {
+        attempts++;
+        if (attempts > maxAttempts) {
+          clearInterval(pollTimer);
+          setStatus("Timeout — generation took too long. Try again.", true);
+          resetBtn();
+          return;
+        }
+
+        try {
+          const res = await fetch(`/api/result/${requestId}`);
+          const data = await res.json();
+
+          const s = data.status || "";
+          setStatus(`Status: ${s} (attempt ${attempts}/${maxAttempts})`);
+
+          if (s === "completed" || s === "succeeded") {
+            clearInterval(pollTimer);
+
+            // Extract image URL from response
+            let imgUrl = null;
+            if (data.output && typeof data.output === "string") {
+              imgUrl = data.output;
+            } else if (data.output && Array.isArray(data.output)) {
+              imgUrl = data.output[0];
+            } else if (data.outputs && Array.isArray(data.outputs)) {
+              imgUrl = data.outputs[0];
+            } else if (data.result && typeof data.result === "string") {
+              imgUrl = data.result;
+            } else if (data.result && data.result.output) {
+              imgUrl = Array.isArray(data.result.output) ? data.result.output[0] : data.result.output;
+            }
+
+            if (imgUrl) {
+              resultArea.innerHTML = `<img src="${imgUrl}" alt="Generated" />`;
+              setStatus("Done!");
+              // Add download link below status
+              const dl = document.createElement("a");
+              dl.href = imgUrl;
+              dl.target = "_blank";
+              dl.className = "download-link";
+              dl.textContent = "Open full resolution ↗";
+              status.parentElement.insertBefore(dl, status.nextSibling);
+            } else {
+              setStatus("Completed but no image URL found. Raw: " + JSON.stringify(data).slice(0, 200), true);
+            }
+            resetBtn();
+          } else if (s === "failed" || s === "error") {
+            clearInterval(pollTimer);
+            setStatus("Generation failed on server: " + (data.error || JSON.stringify(data)), true);
+            resetBtn();
+          }
+        } catch (err) {
+          // network error, keep trying
+        }
+      }, 1500);
+    }
+
+    function setStatus(msg, isError = false) {
+      status.textContent = msg;
+      status.className = isError ? "status error" : "status";
+    }
+
+    function resetBtn() {
+      btn.disabled = false;
+      btn.textContent = "Generate with Soul 2.0";
+    }
+  </script>
+</body>
+</html>
